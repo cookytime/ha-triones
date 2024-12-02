@@ -5,9 +5,9 @@ import asyncio
 
 from .const import LOGGER
 
-READ_CHARACTERISTIC_UUIDS = ["000001812-0000-1000-8000-00805f9b34fb"]
-WRITE_CHARACTERISTIC_UUIDS  = ["0000fff0-0000-1000-8000-00805f9b34fb"]
-
+READ_CHARACTERISTIC_UUIDS = ["0000ae10-0000-1000-8000-00805f9b34fb", "0000ff02-0000-1000-8000-00805f9b34fb"]
+WRITE_CHARACTERISTIC_UUIDS  = ["0000ae01-0000-1000-8000-00805f9b34fb", "0000ff01-0000-1000-8000-00805f9b34fb"]
+0
 async def discover():
     """Discover Bluetooth LE devices."""
     devices = await BleakScanner.discover()
