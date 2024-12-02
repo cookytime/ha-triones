@@ -116,3 +116,16 @@ async def update(self):
     async def disconnect(self):
         if self._device.is_connected:
             await self._device.disconnect()
+
+    async def async_unload_entry(hass, config_entry):
+        """Handle the unloading of an entry."""
+        # Retrieve instance and disconnect
+        instance = hass.data["triones_instance"]
+        if instance:
+            await instance.disconnect()
+
+        # Remove entry from hass data
+        hass.data.pop("triones_instance", None)
+
+        return True
+
