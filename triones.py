@@ -68,6 +68,15 @@ class TrionesInstance:
 
     async def turn_off(self):
         await self._write(bytearray([0xCC, 0x24, 0x33]))
+        
+    async def disconnect(self):
+        """Disconnect the BLE client if connected."""
+        try:
+            if self._device.is_connected:
+                await self._device.disconnect()
+                LOGGER.info(f"Disconnected from {self._mac}")
+        except Exception as error:
+            LOGGER.error(f"Error while disconnecting from {self._mac}: {error}")
 
 async def update(self):
     try:
@@ -117,15 +126,4 @@ async def update(self):
         if self._device.is_connected:
             await self._device.disconnect()
 
-    async def async_unload_entry(hass, config_entry):
-        """Handle the unloading of an entry."""
-        # Retrieve instance and disconnect
-        instance = hass.data["triones_instance"]
-        if instance:
-            await instance.disconnect()
-
-        # Remove entry from hass data
-        hass.data.pop("triones_instance", None)
-
-        return True
-
+            
