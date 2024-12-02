@@ -2,7 +2,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
-PLATFORMS = ["light", "sensor"]  # Add the platforms your integration supports
+PLATFORMS = ["light"]  # Add the platforms your integration supports
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Triones from a config entry."""
