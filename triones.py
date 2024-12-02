@@ -69,46 +69,49 @@ class TrionesInstance:
     async def turn_off(self):
         await self._write(bytearray([0xCC, 0x24, 0x33]))
 
-    async def update(self):
-        try:
-            if not self._device.is_connected:
-                await self._device.connect(timeout=20)
-                await asyncio.sleep(1)
+async def update(self):
+    try:
+        if not self._device.is_connected:
+            await self._device.connect(timeout=20)
+            await asyncio.sleep(1)
 
-                # Discover services and dynamically set UUIDs
-                for service in self._device.services:
-                    for char in service.characteristics:
-                        if "write" in char.properties:
-                            self._write_uuid = char.uuid
-                        if "read" in char.properties:
-                            self._read_uuid = char.uuid
+            # Dynamically discover services and characteristics
+            for service in self._device.services:
+                for char in service.characteristics:
+                    if "write" in char.properties:
+                        self._write_uuid = char.uuid
+                    if "read" in char.properties:
+                        self._read_uuid = char.uuid
 
-                if not self._read_uuid or not self._write_uuid:
-                    LOGGER.error("No supported read/write UUIDs found")
-                    return
+            if not self._read_uuid or not self._write_uuid:
+                LOGGER.error("No supported read/write UUIDs found")
+                return
 
-                LOGGER.info(f"Read UUID: {self._read_uuid}, Write UUID: {self._write_uuid}")
+            LOGGER.info(f"Read UUID: {self._read_uuid}, Write UUID: {self._write_uuid}")
 
-            await asyncio.sleep(2)
+        await asyncio.sleep(2)
 
-            # Fetch device status
-            future = asyncio.get_event_loop().create_future()
+        # Fetch status if notify is supported
+        future = asyncio.get_event_loop().create_future()
+        if "notify" in self._device.services.get_characteristic(self._read_uuid).properties:
             await self._device.start_notify(self._read_uuid, create_status_callback(future))
             await self._write(bytearray([0xEF, 0x01, 0x77]))
-
             await asyncio.wait_for(future, 5.0)
             await self._device.stop_notify(self._read_uuid)
-
             res = future.result()
-            self._is_on = True if res[2] == 0x23 else False if res[2] == 0x24 else None
-            self._rgb_color = (res[6], res[7], res[8])
-            self._brightness = res[9] if res[9] > 0 else None
-            LOGGER.debug("Received data: %s", ''.join(format(x, ' 03x') for x in res))
+        else:
+            LOGGER.warning("Characteristic does not support notify; skipping status update")
+            return
 
-        except Exception as error:
-            self._is_on = None
-            LOGGER.error("Error getting status: %s", error)
-            LOGGER.debug(traceback.format_exc())
+        self._is_on = True if res[2] == 0x23 else False if res[2] == 0x24 else None
+        self._rgb_color = (res[6], res[7], res[8])
+        self._brightness = res[9] if res[9] > 0 else None
+        LOGGER.debug("Received data: %s", ''.join(format(x, ' 03x') for x in res))
+
+    except Exception as error:
+        self._is_on = None
+        LOGGER.error("Error getting status: %s", error)
+        LOGGER.debug(traceback.format_exc())
 
     async def disconnect(self):
         if self._device.is_connected:
