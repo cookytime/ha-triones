@@ -21,86 +21,48 @@ async def async_setup_entry(hass, config_entry, async_add_devices):
     async_add_devices([TrionesLight(instance, config_entry.data["name"], config_entry.entry_id)])
 
 class TrionesLight(LightEntity):
-    def __init__(self, trionesInstance: TrionesInstance, name: str, entry_id: str) -> None:
-        self._instance = trionesInstance
+    def __init__(self, instance: TrionesInstance, name: str, entry_id: str):
+        """Initialize a Triones light."""
+        self._instance = instance
+        self._name = name
         self._entry_id = entry_id
-        self._attr_supported_color_modes = {COLOR_MODE_RGB, COLOR_MODE_WHITE}
-        self._color_mode = None
-        self._attr_name = name
+
+        # Set attributes
         self._attr_unique_id = self._instance.mac
+        self._attr_name = self._name
+        self._is_on = None
+        self._rgb_color = None
+        self._white_brightness = None
 
-    @property
-    def available(self):
-        return self._instance.is_on != None
-
-    @property
-    def brightness(self):
-        if self._instance.white_brightness:
-            return self._instance.white_brightness
-        
-        if self._instance._rgb_color:
-            return max(self._instance.rgb_color)
-        
-        return None
-
-    @property
-    def is_on(self) -> Optional[bool]:
-        return self._instance.is_on
-
-    @property
-    # RGB color/brightness based on https://github.com/home-assistant/core/issues/51175
-    def rgb_color(self):
-        if self._instance.rgb_color:
-            return match_max_scale((255,), self._instance.rgb_color)
-        return None
-
-    @property
-    def color_mode(self):
-        if self._instance.rgb_color:
-            if self._instance.rgb_color == (0, 0, 0):
-                return COLOR_MODE_WHITE
-            return COLOR_MODE_RGB
-        return None
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {
-                (DOMAIN, self._instance.mac)
-            },
-            "name": self.name,
-            "connections": {(device_registry.CONNECTION_NETWORK_MAC, self._instance.mac)},
-            "config_entry_id": self._entry_id
-        }
-
-    def _transform_color_brightness(self, color: Tuple[int, int, int], set_brightness: int):
-        rgb = match_max_scale((255,), color)
-        res = tuple(color * set_brightness // 255 for color in rgb)
-        return res
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        if not self.is_on:
+    async def async_turn_on(self, **kwargs):
+        """Turn the light on."""
+        rgb = kwargs.get("rgb_color", self._rgb_color)
+        if rgb:
+            await self._instance.set_color(rgb)
+        else:
             await self._instance.turn_on()
 
-        if ATTR_WHITE in kwargs:
-            if kwargs[ATTR_WHITE] != self.brightness:
-                await self._instance.set_white(kwargs[ATTR_WHITE])
+        self._is_on = True
 
-        elif ATTR_RGB_COLOR in kwargs:
-            if kwargs[ATTR_RGB_COLOR] != self.rgb_color:
-                color = kwargs[ATTR_RGB_COLOR]
-                if ATTR_BRIGHTNESS in kwargs:
-                    color = self._transform_color_brightness(color, kwargs[ATTR_BRIGHTNESS])
-                else:
-                    color = self._transform_color_brightness(color, self.brightness)
-                await self._instance.set_color(color)
-        
-        elif ATTR_BRIGHTNESS in kwargs and kwargs[ATTR_BRIGHTNESS] != self.brightness and self.rgb_color != None:
-            await self._instance.set_color(self._transform_color_brightness(self.rgb_color, kwargs[ATTR_BRIGHTNESS]))
-
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
+    async def async_turn_off(self, **kwargs):
+        """Turn the light off."""
         await self._instance.turn_off()
+        self._is_on = False
 
-    async def async_update(self) -> None:
+    async def async_update(self):
+        """Fetch the latest state from the device."""
         await self._instance.update()
+        self._is_on = self._instance.is_on
+        self._rgb_color = self._instance.rgb_color
+        self._white_brightness = self._instance.white_brightness
+
+    @property
+    def is_on(self):
+        """Return whether the light is on."""
+        return self._is_on
+
+    @property
+    def rgb_color(self):
+        """Return the RGB color value."""
+        return self._rgb_color
+    
