@@ -7,19 +7,18 @@ from .const import LOGGER
 
 READ_CHARACTERISTIC_UUIDS = ["0000ae10-0000-1000-8000-00805f9b34fb"]
 WRITE_CHARACTERISTIC_UUIDS  = ["0000ae01-0000-1000-8000-00805f9b34fb"]
-0
+
 async def discover():
     """Discover Bluetooth LE devices."""
     devices = await BleakScanner.discover()
     LOGGER.debug("Discovered devices: %s", [{"address": device.address, "name": device.name} for device in devices])
-    return [device for device in devices if device.name.lower().startswith("triones") or device.name.lower().startswith("ledble")]
+    return [device for device in devices if device.name.lower().startswith("KS") or device.name.lower().startswith("ledble")]
 
 def create_status_callback(future: asyncio.Future):
     def callback(sender: int, data: bytearray):
         if not future.done():
             future.set_result(data)
     return callback
-
 class TrionesInstance:
     def __init__(self, mac: str) -> None:
         self._mac = mac
@@ -31,7 +30,9 @@ class TrionesInstance:
         self._read_uuid = None
 
     async def _write(self, data: bytearray):
-        LOGGER.debug(''.join(format(x, ' 03x') for x in data))
+        if not self._write_uuid:
+            raise ValueError("Write UUID not set.")
+        LOGGER.debug('Sending data: %s', ''.join(format(x, ' 03x') for x in data))
         await self._device.write_gatt_char(self._write_uuid, data)
 
     @property
@@ -41,7 +42,7 @@ class TrionesInstance:
     @property
     def is_on(self):
         return self._is_on
-    
+
     @property
     def rgb_color(self):
         return self._rgb_color
@@ -53,27 +54,29 @@ class TrionesInstance:
     async def set_color(self, rgb: Tuple[int, int, int]):
         r, g, b = rgb
         await self._write([0x56, r, g, b, 0x00, 0xF0, 0xAA])
-    
+
     async def set_white(self, intensity: int):
         await self._write([0x56, 0, 0, 0, intensity, 0x0F, 0xAA])
 
     async def turn_on(self):
         await self._write(bytearray([0xCC, 0x23, 0x33]))
-        
+
     async def turn_off(self):
         await self._write(bytearray([0xCC, 0x24, 0x33]))
-    
+
     async def update(self):
         try:
             if not self._device.is_connected:
                 await self._device.connect(timeout=20)
                 await asyncio.sleep(1)
 
-                for char in self._device.services.characteristics.values():
-                    if char.uuid in WRITE_CHARACTERISTIC_UUIDS:
-                        self._write_uuid = char.uuid
-                    if char.uuid in READ_CHARACTERISTIC_UUIDS:
-                        self._read_uuid = char.uuid
+                # Discover services and dynamically set UUIDs
+                for service in self._device.services:
+                    for char in service.characteristics:
+                        if "write" in char.properties:
+                            self._write_uuid = char.uuid
+                        if "read" in char.properties:
+                            self._read_uuid = char.uuid
 
                 if not self._read_uuid or not self._write_uuid:
                     LOGGER.error("No supported read/write UUIDs found")
@@ -83,24 +86,24 @@ class TrionesInstance:
 
             await asyncio.sleep(2)
 
+            # Fetch device status
             future = asyncio.get_event_loop().create_future()
             await self._device.start_notify(self._read_uuid, create_status_callback(future))
             await self._write(bytearray([0xEF, 0x01, 0x77]))
-            
+
             await asyncio.wait_for(future, 5.0)
             await self._device.stop_notify(self._read_uuid)
-            
+
             res = future.result()
             self._is_on = True if res[2] == 0x23 else False if res[2] == 0x24 else None
             self._rgb_color = (res[6], res[7], res[8])
             self._brightness = res[9] if res[9] > 0 else None
-            LOGGER.debug(''.join(format(x, ' 03x') for x in res))
+            LOGGER.debug('Received data: %s', ''.join(format(x, ' 03x') for x in res))
 
-        except (Exception) as error:
+        except Exception as error:
             self._is_on = None
             LOGGER.error("Error getting status: %s", error)
-            track = traceback.format_exc()
-            LOGGER.debug(track)
+            LOGGER.debug(traceback.format_exc())
 
     async def disconnect(self):
         if self._device.is_connected:
