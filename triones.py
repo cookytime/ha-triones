@@ -2,23 +2,28 @@ from typing import Tuple
 from bleak import BleakClient, BleakScanner
 import traceback
 import asyncio
+import logging
 
-from .const import LOGGER
+LOGGER = logging.getLogger(__name__)
 
-READ_CHARACTERISTIC_UUIDS = ["0000ae10-0000-1000-8000-00805f9b34fb"]
-WRITE_CHARACTERISTIC_UUIDS  = ["0000ae01-0000-1000-8000-00805f9b34fb"]
+WRITE_CHARACTERISTIC_UUIDS = ["0000ffd5-0000-1000-8000-00805f9b34fb", "0000ffd9-0000-1000-8000-00805f9b34fb", "0000ffe5-0000-1000-8000-00805f9b34fb", "0000ffe9-0000-1000-8000-00805f9b34fb"]
+READ_CHARACTERISTIC_UUIDS = ["0000ffd0-0000-1000-8000-00805f9b34fb", "0000ffd4-0000-1000-8000-00805f9b34fb", "0000ffe0-0000-1000-8000-00805f9b34fb", "0000ffe4-0000-1000-8000-00805f9b34fb"]
 
 async def discover():
     """Discover Bluetooth LE devices."""
     devices = await BleakScanner.discover()
     LOGGER.debug("Discovered devices: %s", [{"address": device.address, "name": device.name} for device in devices])
-    return [device for device in devices if device.name.lower().startswith("KS") or device.name.lower().startswith("ledble")]
+    return [
+        device for device in devices
+        if device.name and (device.name.lower().startswith("ks") or device.name.lower().startswith("ledble"))
+    ]
 
 def create_status_callback(future: asyncio.Future):
     def callback(sender: int, data: bytearray):
         if not future.done():
             future.set_result(data)
     return callback
+
 class TrionesInstance:
     def __init__(self, mac: str) -> None:
         self._mac = mac
@@ -32,7 +37,7 @@ class TrionesInstance:
     async def _write(self, data: bytearray):
         if not self._write_uuid:
             raise ValueError("Write UUID not set.")
-        LOGGER.debug('Sending data: %s', ''.join(format(x, ' 03x') for x in data))
+        LOGGER.debug("Sending data: %s", ''.join(format(x, ' 03x') for x in data))
         await self._device.write_gatt_char(self._write_uuid, data)
 
     @property
@@ -98,7 +103,7 @@ class TrionesInstance:
             self._is_on = True if res[2] == 0x23 else False if res[2] == 0x24 else None
             self._rgb_color = (res[6], res[7], res[8])
             self._brightness = res[9] if res[9] > 0 else None
-            LOGGER.debug('Received data: %s', ''.join(format(x, ' 03x') for x in res))
+            LOGGER.debug("Received data: %s", ''.join(format(x, ' 03x') for x in res))
 
         except Exception as error:
             self._is_on = None
